@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech to Text Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .language-selector {
+            position: relative;
+            min-width: 200px;
+            margin-right: 10px;
+        }
+        
+        .language-selector label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .language-dropdown {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            cursor: pointer;
+            z-index: 2;
+        }
+        
+        .selected-language {
+            display: flex;
+            align-items: center;
+            padding: 8px 15px;
+            background-color: #f8f9fa;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            min-height: 38px;
+        }
+        
+        .selected-language .flag {
+            font-size: 1.2em;
+            margin-right: 10px;
+        }
+        
+        .selected-language .language-name {
+            flex-grow: 1;
+        }
+        
+        .selected-language::after {
+            content: '▼';
+            font-size: 0.8em;
+            margin-left: 10px;
+            color: #6c757d;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #language {
+            padding: 10px;
+            font-size: 16px;
+        }
+        #result {
+            border: 1px solid #ccc;
+            padding: 20px;
+            min-height: 100px;
+            background-color: #f9f9f9;
+        }
+        .status {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Speech to Text Demo</h1>
+        
+        <div class="controls">
+            <div class="language-selector">
+                <label for="language">Select Language:</label>
+                <select id="language" class="language-dropdown">
+                    <option value="english" data-icon="🇬🇧">English</option>
+                    <option value="hindi" data-icon="🇮🇳">हिंदी (Hindi)</option>
+                    <option value="kannada" data-icon="🇮🇳">ಕನ್ನಡ (Kannada)</option>
+                    <option value="malayalam" data-icon="🇮🇳">മലയാളം (Malayalam)</option>
+                </select>
+                <div id="selectedLanguage" class="selected-language">
+                    <span class="flag">🇬🇧</span>
+                    <span class="language-name">English</span>
+                </div>
+            </div>
+            <button id="startButton">Start Recording</button>
+            <button id="stopButton" disabled>Stop Recording</button>
+            <button id="uploadButton">Upload Audio File</button>
+            <input type="file" id="audioFile" accept="audio/*" style="display: none;">
+        </div>
+        
+        <div>
+            <h3>Transcription:</h3>
+            <div id="result">Your transcription will appear here...</div>
+            <div id="status" class="status"></div>
+        </div>
+    </div>
+
+    <script>
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const uploadButton = document.getElementById('uploadButton');
+        const audioFileInput = document.getElementById('audioFile');
+        const languageSelect = document.getElementById('language');
+        const selectedLanguage = document.getElementById('selectedLanguage');
+        const languageName = selectedLanguage.querySelector('.language-name');
+        const languageFlag = selectedLanguage.querySelector('.flag');
+        
+        // Update the displayed language when selection changes
+        languageSelect.addEventListener('change', () => {
+            const selectedOption = languageSelect.options[languageSelect.selectedIndex];
+            languageName.textContent = selectedOption.text;
+            languageFlag.textContent = selectedOption.dataset.icon;
+        });
+        
+        // Initialize the display
+        const initialOption = languageSelect.options[languageSelect.selectedIndex];
+        languageName.textContent = initialOption.text;
+        languageFlag.textContent = initialOption.dataset.icon;
+        const resultDiv = document.getElementById('result');
+        const statusDiv = document.getElementById('status');
+        
+        let mediaRecorder;
+        let audioChunks = [];
+        
+        // Check if browser supports mediaRecorder
+        if (!navigator.mediaDevices || !window.MediaRecorder) {
+            alert('Your browser does not support the Web Audio API. Please use a modern browser like Chrome or Edge.');
+        } else {
+            // Request access to the microphone
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    mediaRecorder = new MediaRecorder(stream);
+                    
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            audioChunks.push(event.data);
+                        }
+                    };
+                    
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                        await sendAudioToServer(audioBlob);
+                        audioChunks = [];
+                    };
+                })
+                .catch(err => {
+                    console.error('Error accessing microphone:', err);
+                    statusDiv.textContent = 'Error accessing microphone. Please check permissions.';
+                });
+        }
+        
+        // Start recording
+        startButton.addEventListener('click', () => {
+            statusDiv.textContent = 'Recording...';
+            startButton.disabled = true;
+            stopButton.disabled = false;
+            audioChunks = [];
+            mediaRecorder.start();
+        });
+        
+        // Stop recording
+        stopButton.addEventListener('click', () => {
+            mediaRecorder.stop();
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            statusDiv.textContent = 'Processing audio...';
+        });
+        
+        // Upload audio file
+        uploadButton.addEventListener('click', () => {
+            audioFileInput.click();
+        });
+        
+        audioFileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            statusDiv.textContent = 'Processing uploaded file...';
+            await sendAudioToServer(file);
+        });
+        
+        // Send audio to the server for transcription
+        async function sendAudioToServer(audioBlob) {
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.wav');
+            formData.append('language', languageSelect.value);
+            
+            try {
+                const response = await fetch('/speech-to-text', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.textContent = result.text;
+                    statusDiv.textContent = `Transcription complete (${result.language})`;
+                } else {
+                    resultDiv.textContent = `Error: ${result.error}`;
+                    statusDiv.textContent = 'An error occurred during transcription.';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.textContent = 'Failed to connect to the server.';
+                statusDiv.textContent = 'Error';
+            }
+        }
+    </script>
+</body>
+</html>
